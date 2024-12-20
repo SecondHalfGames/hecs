@@ -68,6 +68,9 @@ macro_rules! smaller_tuples_too {
     };
 }
 
+#[cfg(feature = "ms80")]
+pub mod ms80;
+
 mod archetype;
 mod batch;
 mod borrow;
