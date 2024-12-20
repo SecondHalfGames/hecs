@@ -81,7 +81,7 @@ impl fmt::Debug for Entity {
     }
 }
 
-#[cfg(feature = "serde")]
+#[cfg(all(feature = "serde", not(feature = "ms80")))]
 impl serde::Serialize for Entity {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -91,7 +91,7 @@ impl serde::Serialize for Entity {
     }
 }
 
-#[cfg(feature = "serde")]
+#[cfg(all(feature = "serde", not(feature = "ms80")))]
 impl<'de> serde::Deserialize<'de> for Entity {
     fn deserialize<D>(deserializer: D) -> Result<Entity, D::Error>
     where
