@@ -20,7 +20,8 @@ impl Entity {
         self.generation.get()
     }
 
-    fn parse(s: &str) -> Option<Self> {
+    /// MS80 Extension: parse entities from strings for convenience
+    pub fn parse(s: &str) -> Option<Self> {
         let mut split = s.splitn(2, 'v');
         let id = split.next().unwrap().parse().ok()?;
         let generation = split.next()?.parse().ok()?;
