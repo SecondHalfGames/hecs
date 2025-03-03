@@ -2,6 +2,7 @@
 
 use alloc::boxed::Box;
 use alloc::format;
+use core::str::FromStr;
 use serde::de::Visitor;
 use std::fmt::{self};
 use std::string::String;
@@ -20,19 +21,22 @@ impl Entity {
         self.generation.get()
     }
 
-    /// MS80 Extension: parse entities from strings for convenience
-    pub fn parse(s: &str) -> Option<Self> {
-        let mut split = s.splitn(2, 'v');
-        let id = split.next().unwrap().parse().ok()?;
-        let generation = split.next()?.parse().ok()?;
-
-        Self::from_id_generation(id, generation)
-    }
-
     fn from_id_generation(id: u32, generation: u32) -> Option<Self> {
         let generation = (generation as u64) << 32;
         let id = id as u64;
         Self::from_bits(generation | id)
+    }
+}
+
+impl FromStr for Entity {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut split = s.splitn(2, 'v');
+        let id = split.next().unwrap().parse().map_err(drop)?;
+        let generation = split.next().ok_or(())?.parse().map_err(drop)?;
+
+        Self::from_id_generation(id, generation).ok_or(())
     }
 }
 
@@ -78,7 +82,9 @@ impl<'de> Deserialize<'de> for Entity {
         }
 
         let label = String::deserialize(deserializer)?;
-        let handle = Entity::parse(&label).ok_or_else(|| D::Error::custom("invalid entity"))?;
+        let handle: Entity = label
+            .parse()
+            .map_err(|_| D::Error::custom("invalid entity"))?;
 
         Ok(handle)
     }
