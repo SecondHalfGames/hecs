@@ -650,7 +650,7 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
         if self.borrowed {
             return;
         }
-        start_borrow::<Q>(self.world.archetypes_inner());
+        start_borrow::<Q::Fetch>(self.world.archetypes_inner());
         self.borrowed = true;
     }
 
@@ -721,7 +721,7 @@ unsafe impl<Q: Query> Sync for QueryBorrow<'_, Q> where for<'a> Q::Item<'a>: Sen
 impl<Q: Query> Drop for QueryBorrow<'_, Q> {
     fn drop(&mut self) {
         if self.borrowed {
-            release_borrow::<Q>(self.world.archetypes_inner());
+            release_borrow::<Q::Fetch>(self.world.archetypes_inner());
         }
     }
 }
@@ -1641,7 +1641,7 @@ pub struct ViewBorrow<'w, Q: Query> {
 
 impl<'w, Q: Query> ViewBorrow<'w, Q> {
     pub(crate) fn new(world: &'w World) -> Self {
-        start_borrow::<Q>(world.archetypes_inner());
+        start_borrow::<Q::Fetch>(world.archetypes_inner());
         let view = unsafe { View::<Q>::new(world.entities_meta(), world.archetypes_inner()) };
 
         Self { view }
@@ -1728,7 +1728,7 @@ impl<'w, Q: Query> ViewBorrow<'w, Q> {
 
 impl<Q: Query> Drop for ViewBorrow<'_, Q> {
     fn drop(&mut self) {
-        release_borrow::<Q>(self.view.archetypes)
+        release_borrow::<Q::Fetch>(self.view.archetypes)
     }
 }
 
@@ -1762,26 +1762,26 @@ pub(crate) fn assert_distinct<const N: usize>(entities: &[Entity; N]) {
 }
 
 /// Start the borrow
-fn start_borrow<Q: Query>(archetypes: &[Archetype]) {
+fn start_borrow<F: Fetch>(archetypes: &[Archetype]) {
     for x in archetypes {
         if x.is_empty() {
             continue;
         }
         // TODO: Release prior borrows on failure?
-        if let Some(state) = Q::Fetch::prepare(x) {
-            Q::Fetch::borrow(x, state);
+        if let Some(state) = F::prepare(x) {
+            F::borrow(x, state);
         }
     }
 }
 
 /// Releases the borrow
-fn release_borrow<Q: Query>(archetypes: &[Archetype]) {
+fn release_borrow<F: Fetch>(archetypes: &[Archetype]) {
     for x in archetypes {
         if x.is_empty() {
             continue;
         }
-        if let Some(state) = Q::Fetch::prepare(x) {
-            Q::Fetch::release(x, state);
+        if let Some(state) = F::prepare(x) {
+            F::release(x, state);
         }
     }
 }
