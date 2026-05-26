@@ -202,6 +202,20 @@ impl<T: ?Sized> Clone for Ref<'_, T> {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for Ref<'_, T>
+where
+    T: serde::Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let value: &T = self;
+        value.serialize(serializer)
+    }
+}
+
 /// Unique borrow of an entity's component
 pub struct RefMut<'a, T: ?Sized> {
     borrow: ComponentBorrowMut<'a>,
