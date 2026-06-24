@@ -151,7 +151,15 @@ impl<'de> Visitor<'de> for EntityHandleVisitor {
     where
         E: serde::de::Error,
     {
-        v.parse().map_err(|_| E::custom("invalid entity"))
+        if v.contains('v') {
+            // This is a string containing an index+generation Entity value
+            v.parse::<Entity>().map_err(|_| E::custom("invalid entity"))
+        } else {
+            // This is an integer serialized entity ID that was serialized as a
+            // string, like as a key in a JSON map.
+            let id = v.parse::<u64>().map_err(|_| E::custom("invalid entity"))?;
+            self.visit_u64(id)
+        }
     }
 
     fn visit_u64<E>(self, id: u64) -> Result<Self::Value, E>
