@@ -2,13 +2,12 @@
 
 use alloc::boxed::Box;
 use alloc::format;
+use core::num::NonZeroU32;
 use core::str::FromStr;
-use serde::de::Visitor;
-use std::fmt::{self};
-use std::string::String;
+use std::fmt;
 use std::sync::OnceLock;
 
-use serde::de::Error as _;
+use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::Entity;
@@ -22,9 +21,10 @@ impl Entity {
     }
 
     fn from_id_generation(id: u32, generation: u32) -> Option<Self> {
-        let generation = (generation as u64) << 32;
-        let id = id as u64;
-        Self::from_bits(generation | id)
+        Some(Self {
+            id,
+            generation: NonZeroU32::new(generation)?,
+        })
     }
 }
 
@@ -40,12 +40,35 @@ impl FromStr for Entity {
     }
 }
 
+pub enum SerializedEntity {
+    /// Serialize this Entity as a string containing the exact ID and generation
+    /// that's currently used in the world.
+    Entity(Entity),
+
+    /// Serialize this Entity as the given u64.
+    Id(u64),
+}
+
+impl Serialize for SerializedEntity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            SerializedEntity::Entity(entity) => {
+                let label = format!("{}v{}", entity.id(), entity.generation());
+                label.serialize(serializer)
+            }
+            SerializedEntity::Id(id) => serializer.serialize_u64(id),
+        }
+    }
+}
+
 /// MS80 Extension: Defines custom serialization for entities
 #[allow(missing_docs)]
 pub trait EntitySerialization: Send + Sync + 'static {
-    fn entity_to_id(&self, entity: Entity) -> Option<u64>;
-    fn id_to_entity(&self, id: u64) -> Option<Entity>;
-    fn is_deserializing(&self) -> bool;
+    fn entity_to_id(&self, entity: Entity) -> Option<SerializedEntity>;
+    fn id_to_entity(&self, id: SerializedEntity) -> Option<Entity>;
 }
 
 /// MS80 Extension: Set the current entity serializer; can only be called once.
@@ -59,13 +82,21 @@ impl Serialize for Entity {
         S: Serializer,
     {
         if let Some(serialization) = SERIALIZATION.get() {
-            if let Some(id) = serialization.entity_to_id(*self) {
-                return serializer.serialize_u64(id);
+            if serializer.is_human_readable() {
+                match serialization.entity_to_id(*self) {
+                    Some(s) => s.serialize(serializer),
+                    None => serializer.serialize_none(),
+                }
+            } else {
+                match serialization.entity_to_id(*self) {
+                    Some(s) => s.serialize(serializer),
+                    None => Entity::DANGLING.to_bits().serialize(serializer),
+                }
             }
+        } else {
+            // No custom serialization was set; use default behavior.
+            self.to_bits().serialize(serializer)
         }
-
-        let label = format!("{}v{}", self.id(), self.generation());
-        label.serialize(serializer)
     }
 }
 
@@ -75,18 +106,28 @@ impl<'de> Deserialize<'de> for Entity {
         D: Deserializer<'de>,
         D::Error: serde::de::Error,
     {
-        if let Some(serialization) = SERIALIZATION.get() {
-            if serialization.is_deserializing() {
-                return deserializer.deserialize_u64(EntityHandleVisitor);
+        if SERIALIZATION.get().is_some() {
+            if deserializer.is_human_readable() {
+                // Human-readable formats can hold several representations of an
+                // entity including a string, integer, or None.
+                deserializer.deserialize_any(EntityHandleVisitor)
+            } else {
+                // Non-human-readable formats contain only serialized entity
+                // IDs.
+                deserializer.deserialize_u64(EntityHandleVisitor)
+            }
+        } else {
+            // No custom deserialization set; use default behavior.
+            let bits = u64::deserialize(deserializer)?;
+
+            match Entity::from_bits(bits) {
+                Some(ent) => Ok(ent),
+                None => Err(serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Unsigned(bits),
+                    &"`a valid `Entity` bitpattern",
+                )),
             }
         }
-
-        let label = String::deserialize(deserializer)?;
-        let handle: Entity = label
-            .parse()
-            .map_err(|_| D::Error::custom("invalid entity"))?;
-
-        Ok(handle)
     }
 }
 
@@ -99,15 +140,31 @@ impl<'de> Visitor<'de> for EntityHandleVisitor {
         write!(formatter, "an integer entity ID")
     }
 
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Entity::DANGLING)
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        v.parse().map_err(|_| E::custom("invalid entity"))
+    }
+
     fn visit_u64<E>(self, id: u64) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        let mapped = SERIALIZATION.get().and_then(|ser| ser.id_to_entity(id));
+        let mapped = SERIALIZATION
+            .get()
+            .and_then(|ser| ser.id_to_entity(SerializedEntity::Id(id)));
 
         let entity = match mapped {
             Some(entity) => entity,
-            None => Entity::from_bits(id).ok_or_else(|| E::custom("invalid hecs entity ID"))?,
+            None => Entity::DANGLING,
         };
 
         Ok(entity)
