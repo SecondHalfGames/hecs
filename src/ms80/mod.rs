@@ -140,6 +140,13 @@ impl<'de> Visitor<'de> for EntityHandleVisitor {
         write!(formatter, "an integer entity ID")
     }
 
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Entity::DANGLING)
+    }
+
     fn visit_none<E>(self) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
