@@ -12,17 +12,25 @@ your application however you like!
 ### Example
 
 ```rust
-let mut world = World::new();
-// Nearly any type can be used as a component with zero boilerplate
-let a = world.spawn((123, true, "abc"));
-let b = world.spawn((42, false));
+let mut world = hecs::World::new();
+
+// Component types can be defined with minimal boilerplate
+struct Name(&'static str);
+impl hecs::Component for Name {}
+struct Weight(u32);
+impl hecs::Component for Weight {}
+struct Price(u32);
+impl hecs::Component for Price {}
+
+let a = world.spawn((Name("abc"), Weight(12), Price(123)));
+let b = world.spawn((Weight(38), Price(42)));
 // Systems can be simple for loops
-for (number, &flag) in world.query_mut::<(&mut i32, &bool)>() {
-  if flag { *number *= 2; }
+for (price, weight) in world.query_mut::<(&mut Price, &Weight)>() {
+  if weight.0 < 20 { price.0 *= 2; }
 }
 // Random access is simple and safe
-assert_eq!(*world.get::<&i32>(a).unwrap(), 246);
-assert_eq!(*world.get::<&i32>(b).unwrap(), 42);
+assert_eq!(world.get::<&Price>(a).unwrap().0, 246);
+assert_eq!(world.get::<&Price>(b).unwrap().0, 42);
 ```
 
 ### Why ECS?
@@ -100,8 +108,8 @@ If hecs doesn't suit you, one of those might do the trick!
 
 Licensed under either of
 
- * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
 

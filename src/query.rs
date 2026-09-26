@@ -19,6 +19,8 @@ use crate::{Component, Entity, World};
 
 /// A collection of component types to fetch from a [`World`](crate::World)
 ///
+/// See [`World::query`] for detailed discussion.
+///
 /// The interface of this trait is a private implementation detail.
 pub trait Query {
     /// Type of results yielded by the query
@@ -93,6 +95,7 @@ impl Query for Entity {
         }
     }
 }
+unsafe impl QueryShared for Entity {}
 
 #[doc(hidden)]
 #[derive(Clone)]
@@ -437,15 +440,21 @@ unsafe impl<L: Fetch, R: Fetch> Fetch for FetchOr<L, R> {
 /// # Example
 /// ```
 /// # use hecs::*;
+/// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// struct Idx(i32);
+/// impl Component for Idx {}
+/// struct Flag(bool);
+/// impl Component for Flag {}
+///
 /// let mut world = World::new();
-/// let a = world.spawn((123, true, "abc"));
-/// let b = world.spawn((456, false));
-/// let c = world.spawn((42, "def"));
-/// let entities = world.query::<Without<(Entity, &i32), &bool>>()
+/// let a = world.spawn((Idx(123), Flag(true)));
+/// let b = world.spawn((Idx(456), Flag(false)));
+/// let c = world.spawn((Idx(42),));
+/// let entities = world.query::<Without<(Entity, &Idx), &Flag>>()
 ///     .iter()
-///     .map(|(e, &i)| (e, i))
+///     .map(|(e, i)| (e, *i))
 ///     .collect::<Vec<_>>();
-/// assert_eq!(entities, &[(c, 42)]);
+/// assert_eq!(entities, &[(c, Idx(42))]);
 /// ```
 pub struct Without<Q, R>(PhantomData<(Q, fn(R))>);
 
@@ -514,17 +523,23 @@ impl<F: Clone, G> Clone for FetchWithout<F, G> {
 /// # Example
 /// ```
 /// # use hecs::*;
+/// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// struct Idx(i32);
+/// impl Component for Idx {}
+/// struct Flag(bool);
+/// impl Component for Flag {}
+///
 /// let mut world = World::new();
-/// let a = world.spawn((123, true, "abc"));
-/// let b = world.spawn((456, false));
-/// let c = world.spawn((42, "def"));
-/// let entities = world.query::<With<(Entity, &i32), &bool>>()
+/// let a = world.spawn((Idx(123), Flag(true)));
+/// let b = world.spawn((Idx(456), Flag(false)));
+/// let c = world.spawn((Idx(42),));
+/// let entities = world.query::<With<(Entity, &Idx), &Flag>>()
 ///     .iter()
-///     .map(|(e, &i)| (e, i))
+///     .map(|(e, i)| (e, *i))
 ///     .collect::<Vec<_>>();
 /// assert_eq!(entities.len(), 2);
-/// assert!(entities.contains(&(a, 123)));
-/// assert!(entities.contains(&(b, 456)));
+/// assert!(entities.contains(&(a, Idx(123))));
+/// assert!(entities.contains(&(b, Idx(456))));
 /// ```
 pub struct With<Q, R>(PhantomData<(Q, fn(R))>);
 
@@ -591,11 +606,16 @@ impl<F: Clone, G> Clone for FetchWith<F, G> {
 /// # Example
 /// ```
 /// # use hecs::*;
+/// struct Idx(i32);
+/// impl Component for Idx {}
+/// struct Flag(bool);
+/// impl Component for Flag {}
+///
 /// let mut world = World::new();
-/// let a = world.spawn((123, true, "abc"));
-/// let b = world.spawn((456, false));
-/// let c = world.spawn((42, "def"));
-/// let entities = world.query::<(Entity, Satisfies<&bool>)>()
+/// let a = world.spawn((Idx(123), Flag(true)));
+/// let b = world.spawn((Idx(456), Flag(false)));
+/// let c = world.spawn((Idx(42),));
+/// let entities = world.query::<(Entity, Satisfies<&Flag>)>()
 ///     .iter()
 ///     .collect::<Vec<_>>();
 /// assert_eq!(entities.len(), 3);
@@ -684,9 +704,10 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
 
     /// Like `iter`, but returns child iterators of at most `batch_size` elements
     ///
-    /// Useful for distributing work over a threadpool.
+    /// Useful for distributing work over a threadpool. `batch_size` must be greater than 0.
     // The lifetime narrowing here is required for soundness.
     pub fn iter_batched(&mut self, batch_size: u32) -> BatchedIter<'_, Q> {
+        assert!(batch_size > 0, "batch size must be greater than 0");
         let cache = self.borrow().clone();
         unsafe {
             BatchedIter::new(
@@ -715,18 +736,24 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
     /// # Example
     /// ```
     /// # use hecs::*;
+    /// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// struct Idx(i32);
+    /// impl Component for Idx {}
+    /// struct Flag(bool);
+    /// impl Component for Flag {}
+    ///
     /// let mut world = World::new();
-    /// let a = world.spawn((123, true, "abc"));
-    /// let b = world.spawn((456, false));
-    /// let c = world.spawn((42, "def"));
-    /// let entities = world.query::<(Entity, &i32)>()
-    ///     .with::<&bool>()
+    /// let a = world.spawn((Idx(123), Flag(true)));
+    /// let b = world.spawn((Idx(456), Flag(false)));
+    /// let c = world.spawn((Idx(42),));
+    /// let entities = world.query::<(Entity, &Idx)>()
+    ///     .with::<&Flag>()
     ///     .iter()
-    ///     .map(|(e, &i)| (e, i)) // Copy out of the world
+    ///     .map(|(e, i)| (e, *i)) // Copy out of the world
     ///     .collect::<Vec<_>>();
     /// assert_eq!(entities.len(), 2);
-    /// assert!(entities.contains(&(a, 123)));
-    /// assert!(entities.contains(&(b, 456)));
+    /// assert!(entities.contains(&(a, Idx(123))));
+    /// assert!(entities.contains(&(b, Idx(456))));
     /// ```
     pub fn with<R: Query>(self) -> QueryBorrow<'w, With<Q, R>> {
         self.transform()
@@ -739,16 +766,22 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
     /// # Example
     /// ```
     /// # use hecs::*;
+    /// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// struct Idx(i32);
+    /// impl Component for Idx {}
+    /// struct Flag(bool);
+    /// impl Component for Flag {}
+    ///
     /// let mut world = World::new();
-    /// let a = world.spawn((123, true, "abc"));
-    /// let b = world.spawn((456, false));
-    /// let c = world.spawn((42, "def"));
-    /// let entities = world.query::<(Entity, &i32)>()
-    ///     .without::<&bool>()
+    /// let a = world.spawn((Idx(123), Flag(true)));
+    /// let b = world.spawn((Idx(456), Flag(false)));
+    /// let c = world.spawn((Idx(42),));
+    /// let entities = world.query::<(Entity, &Idx)>()
+    ///     .without::<&Flag>()
     ///     .iter()
-    ///     .map(|(e, &i)| (e, i)) // Copy out of the world
+    ///     .map(|(e, i)| (e, *i)) // Copy out of the world
     ///     .collect::<Vec<_>>();
-    /// assert_eq!(entities, &[(c, 42)]);
+    /// assert_eq!(entities, &[(c, Idx(42))]);
     /// ```
     pub fn without<R: Query>(self) -> QueryBorrow<'w, Without<Q, R>> {
         self.transform()
@@ -832,6 +865,30 @@ impl<'q, Q: Query> Iterator for QueryIter<'q, Q> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let n = self.len();
         (n, Some(n))
+    }
+
+    // We're implementing this because some `Iterator`-consuming methods are
+    // implemented using `Iterator::fold`. With an optmized version implemented
+    // without actually calling `Iterator::next`, they all benefit from
+    // improved performance. See `for_each_100k` bench.
+    //
+    // TODO: Once `Try` is stable, implement `Iterator::try_fold` instead. This
+    // will make *all* `Iterator`-consuming methods rely on that
+    // implementation. Also implement it for `PreparedQueryIter` and `Batch`
+    fn fold<B, F>(mut self, mut init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, Self::Item) -> B,
+    {
+        loop {
+            init = unsafe { self.iter.fold(self.world.entities_meta(), init, &mut f) };
+
+            if let Some(iter) = unsafe { self.archetypes.next(self.world) } {
+                self.iter = iter;
+            } else {
+                break init;
+            }
+        }
     }
 }
 
@@ -969,6 +1026,24 @@ impl<Q: Query> ChunkIter<Q> {
         Some(item)
     }
 
+    #[inline]
+    unsafe fn fold<'a, B, F>(&mut self, meta: &[EntityMeta], mut init: B, mut f: F) -> B
+    where
+        F: FnMut(B, Q::Item<'a>) -> B,
+    {
+        let start = self.position;
+        // Fold should consume the iterator, even if F panics.
+        self.position = self.len;
+
+        for i in start..self.len {
+            let components = unsafe { Q::get(meta, &self.fetch, i) };
+
+            init = f(init, components);
+        }
+
+        init
+    }
+
     fn remaining(&self) -> usize {
         self.len - self.position
     }
@@ -1056,6 +1131,14 @@ impl<'q, Q: Query> Iterator for Batch<'q, Q> {
 
     fn next(&mut self) -> Option<Self::Item> {
         unsafe { self.state.next(self.meta) }
+    }
+
+    fn fold<B, F>(mut self, init: B, f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, Self::Item) -> B,
+    {
+        unsafe { self.state.fold(self.meta, init, f) }
     }
 }
 
@@ -1326,6 +1409,23 @@ impl<'q, Q: Query> Iterator for PreparedQueryIter<'q, Q> {
         let n = self.len();
         (n, Some(n))
     }
+
+    fn fold<B, F>(mut self, mut init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, Self::Item) -> B,
+    {
+        loop {
+            init = unsafe { self.iter.fold(self.meta, init, &mut f) };
+
+            if let Some((idx, state)) = self.state.next() {
+                let archetype = &self.archetypes[*idx];
+                self.iter = ChunkIter::new(archetype, Q::Fetch::execute(archetype, *state));
+            } else {
+                break init;
+            }
+        }
+    }
 }
 
 impl<Q: Query> ExactSizeIterator for PreparedQueryIter<'_, Q> {
@@ -1429,22 +1529,25 @@ impl<'q, Q: Query> View<'q, Q> {
     /// # Examples
     ///
     /// ```
-    /// # use hecs::World;
+    /// # use hecs::{Component, World};
+    /// struct Idx(i32);
+    /// impl Component for Idx {}
+    ///
     /// let mut world = World::new();
     ///
-    /// let a = world.spawn((1, 1.0));
-    /// let b = world.spawn((2, 4.0));
-    /// let c = world.spawn((3, 9.0));
+    /// let a = world.spawn((Idx(1),));
+    /// let b = world.spawn((Idx(2),));
+    /// let c = world.spawn((Idx(3),));
     ///
-    /// let mut query = world.query_mut::<&mut i32>();
+    /// let mut query = world.query_mut::<&mut Idx>();
     /// let mut view = query.view();
-    /// let [a,b,c] = view.get_mut_n([a, b, c]);
+    /// let [a, b, c] = view.get_disjoint_mut([a, b, c]);
     ///
-    /// assert_eq!(*a.unwrap(), 1);
-    /// assert_eq!(*b.unwrap(), 2);
-    /// assert_eq!(*c.unwrap(), 3);
+    /// assert_eq!(a.unwrap().0, 1);
+    /// assert_eq!(b.unwrap().0, 2);
+    /// assert_eq!(c.unwrap().0, 3);
     /// ```
-    pub fn get_many_mut<const N: usize>(
+    pub fn get_disjoint_mut<const N: usize>(
         &mut self,
         entities: [Entity; N],
     ) -> [Option<Q::Item<'_>>; N] {
@@ -1462,9 +1565,12 @@ impl<'q, Q: Query> View<'q, Q> {
     }
 
     #[doc(hidden)]
-    #[deprecated(since = "0.10.5", note = "renamed to `get_many_mut`")]
-    pub fn get_mut_n<const N: usize>(&mut self, entities: [Entity; N]) -> [Option<Q::Item<'_>>; N] {
-        self.get_many_mut(entities)
+    #[deprecated(since = "0.11.0", note = "renamed to `get_disjoint_mut`")]
+    pub fn get_many_mut<const N: usize>(
+        &mut self,
+        entities: [Entity; N],
+    ) -> [Option<Q::Item<'_>>; N] {
+        self.get_disjoint_mut(entities)
     }
 
     /// Iterate over all entities satisfying `Q`
@@ -1610,8 +1716,8 @@ impl<'q, Q: Query> PreparedView<'q, Q> {
 
     /// Like `get_mut`, but allows checked simultaneous access to multiple entities
     ///
-    /// See [`View::get_many_mut`] for details.
-    pub fn get_many_mut<const N: usize>(
+    /// See [`View::get_disjoint_mut`] for details.
+    pub fn get_disjoint_mut<const N: usize>(
         &mut self,
         entities: [Entity; N],
     ) -> [Option<Q::Item<'_>>; N] {
@@ -1629,9 +1735,12 @@ impl<'q, Q: Query> PreparedView<'q, Q> {
     }
 
     #[doc(hidden)]
-    #[deprecated(since = "0.10.5", note = "renamed to `get_many_mut`")]
-    pub fn get_mut_n<const N: usize>(&mut self, entities: [Entity; N]) -> [Option<Q::Item<'_>>; N] {
-        self.get_many_mut(entities)
+    #[deprecated(since = "0.11.0", note = "renamed to `get_disjoint_mut`")]
+    pub fn get_many_mut<const N: usize>(
+        &mut self,
+        entities: [Entity; N],
+    ) -> [Option<Q::Item<'_>>; N] {
+        self.get_disjoint_mut(entities)
     }
 
     /// Iterate over all entities satisfying `Q`
@@ -1727,30 +1836,42 @@ impl<'w, Q: Query> ViewBorrow<'w, Q> {
     ///
     /// For N > 3, the check for distinct entities will clone the array and take O(N log N) time.
     ///
-    /// See [`View::get_many_mut``].
+    /// See [`View::get_disjoint_mut``].
     ///
     /// # Examples
     ///
     /// ```
-    /// # use hecs::World;
+    /// # use hecs::{Component, World};
+    /// struct Idx(i32);
+    /// impl Component for Idx {}
+    ///
     /// let mut world = World::new();
     ///
-    /// let a = world.spawn((1, 1.0));
-    /// let b = world.spawn((2, 4.0));
-    /// let c = world.spawn((3, 9.0));
+    /// let a = world.spawn((Idx(1),));
+    /// let b = world.spawn((Idx(2),));
+    /// let c = world.spawn((Idx(3),));
     ///
-    /// let mut view = world.view_mut::<&mut i32>();
-    /// let [a, b, c] = view.get_mut_n([a, b, c]);
+    /// let mut view = world.view_mut::<&mut Idx>();
+    /// let [a, b, c] = view.get_disjoint_mut([a, b, c]);
     ///
-    /// assert_eq!(*a.unwrap(), 1);
-    /// assert_eq!(*b.unwrap(), 2);
-    /// assert_eq!(*c.unwrap(), 3);
+    /// assert_eq!(a.unwrap().0, 1);
+    /// assert_eq!(b.unwrap().0, 2);
+    /// assert_eq!(c.unwrap().0, 3);
     /// ```
+    pub fn get_disjoint_mut<const N: usize>(
+        &mut self,
+        entities: [Entity; N],
+    ) -> [Option<Q::Item<'_>>; N] {
+        self.view.get_disjoint_mut(entities)
+    }
+
+    #[doc(hidden)]
+    #[deprecated(since = "0.11.0", note = "renamed to `get_disjoint_mut`")]
     pub fn get_many_mut<const N: usize>(
         &mut self,
         entities: [Entity; N],
     ) -> [Option<Q::Item<'_>>; N] {
-        self.view.get_many_mut(entities)
+        self.view.get_disjoint_mut(entities)
     }
 
     /// Iterate over all entities satisfying `Q`

@@ -1,5 +1,37 @@
 # Unreleased
 
+### Changed
+
+- `Component` is no longer automatically implemented for all `Send + Sync + 'static` types. Types
+  must now implement it explicitly, either by hand (`impl Component for Position {}`) or with the
+  new `#[derive(Component)]` macro from the `hecs-macros` crate (enabled by the `macros` feature).
+  This rules out accidental use of third-party types as components and leaves the door open for
+  future trait extensions.
+
+# 0.11.1
+
+### Added
+
+- `CommandBuffer::queue` to schedule arbitrary operations on a `World` in sequence with other
+  commands (thanks @K-Adam!)
+- `core::error::Error` implementations for relevant types when the `std` feature is disabled (thanks @djsell!)
+
+### Changed
+
+- Optimized `QueryIter::fold`, dramatically improving performance for many iterator methods (thanks
+  @dragostis!)
+- MSRV raised to 1.81
+
+### Fixed
+
+- `World::spawn_column_batch_at` could execute an out-of-bounds write when the same entity was
+  updated twice
+- `ColumnBatchBuilder` leaked components when `build` was not called
+- `World::spawn_column_batch` could panic on worlds which had despawned entities
+- `BatchedIter` with a 0 batch size would spin forever; it now panics instead
+
+# 0.11.0
+
 ### Added
 
 - `examples/cloning` is a new example showing how to clone `World` with some or all components
@@ -19,6 +51,10 @@
   single batch to be populated concurrently.
 - To support the above, `BatchWriter` now implements `Drop`. Existing code may need to introduce
   explicit drops to avoid borrowing `ColumnBatchBuilder` longer than intended.
+- Renamed `{View, PreparedView}::get_many_mut` and `World::query_many_mut` to `..._disjoint_mut` 
+  for consistency with the stabilized std methods
+- Set-up work is now automatically cached for most uses of queries, dramatically improving 
+  the performance of small queries in worlds with many archetypes.
 
 # 0.10.5
 

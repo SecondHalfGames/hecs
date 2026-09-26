@@ -1,4 +1,7 @@
-use crate::alloc::collections::BinaryHeap;
+use crate::alloc::{
+    alloc::{alloc, dealloc},
+    collections::BinaryHeap,
+};
 use core::{
     any::{type_name, TypeId},
     fmt,
@@ -9,7 +12,7 @@ use core::{
 
 use crate::{
     archetype::{TypeIdMap, TypeInfo},
-    Archetype, Component,
+    Archetype, Bundle, Component,
 };
 
 /// A collection of component types
@@ -33,6 +36,14 @@ impl ColumnBatchType {
     /// [Self::add()] but using type information determined at runtime via [TypeInfo::of()]
     pub fn add_dynamic(&mut self, id: TypeInfo) -> &mut Self {
         self.types.push(id);
+        self
+    }
+
+    /// Update to include all the components in bundle `T`
+    pub fn add_bundle<T: Bundle>(&mut self) -> &mut Self {
+        T::with_static_type_info(|type_infos| {
+            type_infos.iter().for_each(|info| self.types.push(*info))
+        });
         self
     }
 
@@ -116,10 +127,16 @@ impl Drop for ColumnBatchBuilder {
             for ty in archetype.types() {
                 let fill = *self.fill.get_mut(&ty.id()).unwrap().get_mut();
                 unsafe {
+                    let scratch = alloc(ty.layout());
                     let base = archetype.get_dynamic(ty.id(), 0, 0).unwrap();
                     for i in 0..fill {
-                        base.as_ptr().add(i as usize).drop_in_place()
+                        scratch.copy_from_nonoverlapping(
+                            base.as_ptr().add(i as usize),
+                            ty.layout().size(),
+                        );
+                        ty.drop(scratch);
                     }
+                    dealloc(scratch, ty.layout());
                 }
             }
         }
@@ -170,8 +187,7 @@ pub struct BatchIncomplete {
     _opaque: (),
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for BatchIncomplete {}
+impl core::error::Error for BatchIncomplete {}
 
 impl fmt::Display for BatchIncomplete {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -183,43 +199,55 @@ impl fmt::Display for BatchIncomplete {
 mod tests {
     use super::*;
 
+    #[derive(Debug, PartialEq)]
+    struct Idx(usize);
+    impl Component for Idx {}
+    #[derive(Debug)]
+    struct Flag;
+    impl Component for Flag {}
+    #[cfg(feature = "std")]
+    #[derive(Debug)]
+    struct Counted(#[allow(dead_code)] std::sync::Arc<()>);
+    #[cfg(feature = "std")]
+    impl Component for Counted {}
+
     #[test]
     fn empty_batch() {
         let mut types = ColumnBatchType::new();
-        types.add::<usize>();
+        types.add::<Idx>();
         let builder = types.into_batch(0);
-        let mut writer = builder.writer::<usize>().unwrap();
-        assert!(writer.push(42).is_err());
+        let mut writer = builder.writer::<Idx>().unwrap();
+        assert!(writer.push(Idx(42)).is_err());
     }
 
     #[test]
     fn writer_continues_from_last_fill() {
         let mut types = ColumnBatchType::new();
-        types.add::<usize>();
+        types.add::<Idx>();
         let builder = types.into_batch(2);
         {
-            let mut writer = builder.writer::<usize>().unwrap();
-            writer.push(42).unwrap();
+            let mut writer = builder.writer::<Idx>().unwrap();
+            writer.push(Idx(42)).unwrap();
         }
 
-        let mut writer = builder.writer::<usize>().unwrap();
+        let mut writer = builder.writer::<Idx>().unwrap();
 
-        assert_eq!(writer.push(42), Ok(()));
-        assert_eq!(writer.push(42), Err(42));
+        assert_eq!(writer.push(Idx(42)), Ok(()));
+        assert_eq!(writer.push(Idx(42)), Err(Idx(42)));
     }
 
     #[test]
     fn concurrent_writers() {
         let mut types = ColumnBatchType::new();
-        types.add::<usize>();
-        types.add::<u32>();
+        types.add::<Idx>();
+        types.add::<Flag>();
         let builder = types.into_batch(2);
         {
-            let mut a = builder.writer::<usize>().unwrap();
-            let mut b = builder.writer::<u32>().unwrap();
+            let mut a = builder.writer::<Idx>().unwrap();
+            let mut b = builder.writer::<Flag>().unwrap();
             for i in 0..2 {
-                a.push(i as usize).unwrap();
-                b.push(i).unwrap();
+                a.push(Idx(i)).unwrap();
+                b.push(Flag).unwrap();
             }
         }
         builder.build().unwrap();
@@ -229,9 +257,28 @@ mod tests {
     #[should_panic(expected = "writer still exists")]
     fn aliasing_writers() {
         let mut types = ColumnBatchType::new();
-        types.add::<usize>();
+        types.add::<Idx>();
         let builder = types.into_batch(2);
-        let _a = builder.writer::<usize>().unwrap();
-        let _b = builder.writer::<usize>().unwrap();
+        let _a = builder.writer::<Idx>().unwrap();
+        let _b = builder.writer::<Idx>().unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn dropping_builder_drops_elements() {
+        use std::sync::Arc;
+
+        let mut types = ColumnBatchType::new();
+        types.add::<Counted>();
+        let builder = types.into_batch(1);
+        let value = Arc::new(());
+        builder
+            .writer::<Counted>()
+            .unwrap()
+            .push(Counted(value.clone()))
+            .unwrap();
+        assert_eq!(Arc::strong_count(&value), 2);
+        drop(builder);
+        assert_eq!(Arc::strong_count(&value), 1);
     }
 }

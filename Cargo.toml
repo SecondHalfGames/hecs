@@ -1,6 +1,6 @@
 [package]
 name = "hecs"
-version = "0.10.5"
+version = "0.11.1"
 description = "A fast, minimal, and ergonomic entity-component-system library"
 authors = ["Benjamin Saunders <ben.e.saunders@gmail.com>"]
 edition = "2021"
@@ -9,7 +9,7 @@ repository = "https://github.com/Ralith/hecs"
 readme = "README.md"
 keywords = ["ecs", "entity"]
 categories = ["data-structures", "game-engines", "no-std"]
-rust-version = "1.70"
+rust-version = "1.81"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -30,15 +30,15 @@ row-serialize = ["serde"]
 ms80 = ["serde", "serde/std"]
 
 [dependencies]
-hecs-macros = { path = "macros", version = "0.10.0", optional = true }
-hashbrown = { version = "0.16", default-features = false, features = ["default-hasher", "inline-more"] }
+hecs-macros = { path = "macros", version = "0.11.1", optional = true }
+hashbrown = { version = "0.17", default-features = false, features = ["default-hasher", "inline-more"] }
 serde = { version = "1.0.117", default-features = false, optional = true }
-spin = { version = "0.10.0", default-features = false, features = ["mutex", "spin_mutex", "lazy"] }
+spin = { version = "0.12.2", default-features = false, features = ["mutex", "spin_mutex", "lazylock"] }
 foldhash = { version = "0.2.0", default-features = false }
 
 [dev-dependencies]
 criterion = "0.8.0"
-rand = "0.9.0"
+rand = "0.10.0"
 trybuild = "1.0.23"
 serde = { version = "1.0.117", features = ["derive"] }
 serde_test = "1.0.117"

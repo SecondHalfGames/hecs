@@ -38,12 +38,19 @@ pub unsafe trait DynamicBundle {
     /// Checks if the Bundle contains the given `T`:
     ///
     /// ```
-    /// # use hecs::DynamicBundle;
+    /// # use hecs::{Component, DynamicBundle};
+    /// struct Idx(i32);
+    /// impl Component for Idx {}
+    /// struct Size(f32);
+    /// impl Component for Size {}
     ///
-    /// let my_bundle = (0i32, 10.0f32);
-    /// assert!(my_bundle.has::<i32>());
-    /// assert!(my_bundle.has::<f32>());
-    /// assert!(!my_bundle.has::<usize>());
+    /// struct Other;
+    /// impl Component for Other {}
+    ///
+    /// let my_bundle = (Idx(0), Size(10.0));
+    /// assert!(my_bundle.has::<Idx>());
+    /// assert!(my_bundle.has::<Size>());
+    /// assert!(!my_bundle.has::<Other>());
     /// ```
     fn has<T: Component>(&self) -> bool {
         self.with_ids(|types| types.contains(&TypeId::of::<T>()))
@@ -135,8 +142,7 @@ impl fmt::Display for MissingComponent {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for MissingComponent {}
+impl core::error::Error for MissingComponent {}
 
 macro_rules! tuple_impl {
     ($($name: ident),*) => {

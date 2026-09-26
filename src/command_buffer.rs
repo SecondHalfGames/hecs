@@ -4,6 +4,7 @@ use core::ops::Range;
 use core::ptr::{self, NonNull};
 
 use crate::alloc::alloc::{alloc, dealloc, Layout};
+use crate::alloc::boxed::Box;
 use crate::alloc::vec::Vec;
 use crate::archetype::TypeInfo;
 use crate::{align, DynamicBundle};
@@ -16,12 +17,17 @@ use crate::{Component, World};
 ///
 /// ```
 /// # use hecs::*;
+/// struct Flag(bool);
+/// impl Component for Flag {}
+/// struct Idx(i32);
+/// impl Component for Idx {}
+///
 /// let mut world = World::new();
 /// let entity = world.reserve_entity();
 /// let mut cmd = CommandBuffer::new();
-/// cmd.insert(entity, (true, 42));
+/// cmd.insert(entity, (Flag(true), Idx(42)));
 /// cmd.run_on(&mut world); // cmd can now be reused
-/// assert_eq!(*world.get::<&i32>(entity).unwrap(), 42);
+/// assert_eq!(world.get::<&Idx>(entity).unwrap().0, 42);
 /// ```
 pub struct CommandBuffer {
     cmds: Vec<Cmd>,
@@ -119,6 +125,11 @@ impl CommandBuffer {
         self.cmds.push(Cmd::Despawn(entity));
     }
 
+    /// Queue an arbitrary operation to be run on a [`World`]
+    pub fn queue(&mut self, f: impl FnOnce(&mut World) + Send + Sync + 'static) {
+        self.cmds.push(Cmd::Run(Box::new(f)));
+    }
+
     /// Spawn a new entity with `components`
     ///
     /// If the [`Entity`] is needed immediately, consider combining [`World::reserve_entity`] with
@@ -156,6 +167,9 @@ impl CommandBuffer {
                 }
                 Cmd::Despawn(entity) => {
                     let _ = world.despawn(entity);
+                }
+                Cmd::Run(f) => {
+                    f(world);
                 }
             }
         }
@@ -288,11 +302,24 @@ enum Cmd {
     SpawnOrInsert(EntityIndex),
     Remove(RemovedComps),
     Despawn(Entity),
+    Run(Box<dyn FnOnce(&mut World) + Send + Sync + 'static>),
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct A;
+    impl Component for A {}
+    struct B;
+    impl Component for B {}
+    struct C;
+    impl Component for C {}
+    struct D;
+    impl Component for D {}
+    #[derive(Debug, PartialEq)]
+    struct I(i32);
+    impl Component for I {}
 
     #[test]
     fn populate_archetypes() {
@@ -302,10 +329,10 @@ mod tests {
         let enta = world.reserve_entity();
         let entb = world.reserve_entity();
         let entc = world.reserve_entity();
-        buffer.insert(ent, (true, "a"));
-        buffer.insert(entc, (true, "a"));
-        buffer.insert(enta, (1, 1.0));
-        buffer.insert(entb, (1.0, "a"));
+        buffer.insert(ent, (A, B));
+        buffer.insert(entc, (A, B));
+        buffer.insert(enta, (C, D));
+        buffer.insert(entb, (D, B));
         buffer.run_on(&mut world);
         assert_eq!(world.archetypes().len(), 4);
     }
@@ -316,6 +343,7 @@ mod tests {
         // together
         #[derive(Clone)]
         struct A;
+        impl Component for A {}
 
         let mut world = World::new();
 
@@ -344,20 +372,60 @@ mod tests {
         let mut world = World::new();
         let a = world.spawn(());
         let mut cmd = CommandBuffer::new();
-        cmd.insert_one(a, 42i32);
-        cmd.remove_one::<i32>(a);
+        cmd.insert_one(a, I(42));
+        cmd.remove_one::<I>(a);
         cmd.run_on(&mut world);
-        assert!(!world.satisfies::<&i32>(a));
+        assert!(!world.satisfies::<&I>(a));
     }
 
     #[test]
     fn remove_then_insert() {
         let mut world = World::new();
-        let a = world.spawn((17i32,));
+        let a = world.spawn((I(17),));
         let mut cmd = CommandBuffer::new();
-        cmd.remove_one::<i32>(a);
-        cmd.insert_one(a, 42i32);
+        cmd.remove_one::<I>(a);
+        cmd.insert_one(a, I(42));
         cmd.run_on(&mut world);
-        assert_eq!(*world.get::<&i32>(a).unwrap(), 42);
+        assert_eq!(*world.get::<&I>(a).unwrap(), I(42));
+    }
+
+    #[test]
+    fn insert_then_queue() {
+        let mut world = World::new();
+        let a = world.spawn(());
+        let mut cmd = CommandBuffer::new();
+        cmd.insert_one(a, I(42));
+        cmd.queue(move |world| {
+            let _ = world.insert_one(a, I(123));
+        });
+        cmd.run_on(&mut world);
+
+        assert_eq!(*world.get::<&I>(a).unwrap(), I(123));
+    }
+
+    /// Verify that CommandBuffer neither leaks nor double-frees inserted components
+    #[cfg(feature = "std")]
+    #[test]
+    fn ownership_sanity() {
+        use std::sync::Arc;
+
+        struct Counted(#[allow(dead_code)] Arc<()>);
+        impl Component for Counted {}
+
+        let refcount = Arc::new(());
+
+        let mut world = World::new();
+        let entity = world.spawn(());
+
+        {
+            let mut cmd = CommandBuffer::new();
+            cmd.insert_one(entity, Counted(refcount.clone()));
+            assert_eq!(Arc::strong_count(&refcount), 2);
+            cmd.run_on(&mut world);
+        }
+        assert_eq!(Arc::strong_count(&refcount), 2);
+
+        world.despawn(entity).unwrap();
+        assert_eq!(Arc::strong_count(&refcount), 1);
     }
 }

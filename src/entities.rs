@@ -1,13 +1,12 @@
 use alloc::vec::Vec;
 use core::cmp;
 use core::convert::TryFrom;
+use core::error::Error;
 use core::iter::ExactSizeIterator;
 use core::num::{NonZeroU32, NonZeroU64};
 use core::ops::Range;
 use core::sync::atomic::{AtomicIsize, Ordering};
 use core::{fmt, mem};
-#[cfg(feature = "std")]
-use std::error::Error;
 
 /// Lightweight unique ID, or handle, of an entity
 ///
@@ -334,6 +333,7 @@ impl Entities {
     /// This is an awkward separate function to avoid borrowck issues in `SpawnColumnBatchIter`.
     pub fn finish_alloc_many(&mut self, pending_end: usize) {
         self.pending.truncate(pending_end);
+        *self.free_cursor.get_mut() = pending_end as isize;
     }
 
     /// Allocate a specific entity ID, overwriting its generation
@@ -609,7 +609,6 @@ impl fmt::Display for NoSuchEntity {
     }
 }
 
-#[cfg(feature = "std")]
 impl Error for NoSuchEntity {}
 
 #[derive(Clone)]
@@ -638,7 +637,7 @@ impl AllocManyState {
 mod tests {
     use super::*;
     use hashbrown::{HashMap, HashSet};
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{rngs::StdRng, RngExt, SeedableRng};
 
     #[test]
     fn entity_bits_roundtrip() {
@@ -879,5 +878,25 @@ mod tests {
             generation: NonZeroU32::new(1).unwrap(),
             id: 0
         }));
+    }
+
+    #[test]
+    fn alloc_many_updates_pending() {
+        let mut e = Entities::default();
+
+        // Arrange for a single element in pending
+        let x = e.alloc();
+        e.meta[x.id as usize].location.index = 0;
+        e.free(x).unwrap();
+        assert_eq!(*e.free_cursor.get_mut(), 1);
+        assert_eq!(e.pending.len(), 1);
+
+        // Reallocate it
+        let state = e.alloc_many(1, 0, 0);
+        assert_eq!(state.pending_end, 0);
+        e.finish_alloc_many(state.pending_end);
+
+        // Check that we can reserve further entities
+        e.reserve_entity();
     }
 }
