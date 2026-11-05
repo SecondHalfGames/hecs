@@ -101,9 +101,9 @@ pub use entities::{Entity, NoSuchEntity};
 pub use entity_builder::{BuiltEntity, BuiltEntityClone, EntityBuilder, EntityBuilderClone};
 pub use entity_ref::{ComponentRef, ComponentRefShared, EntityRef, Ref, RefMut};
 pub use query::{
-    Access, Batch, BatchedIter, Or, PreparedQuery, PreparedQueryBorrow, PreparedQueryIter,
-    PreparedView, Query, QueryBorrow, QueryIter, QueryMut, QueryShared, Satisfies, View,
-    ViewBorrow, With, Without,
+    Access, Batch, BatchedIter, Mut, MutRef, Or, PreparedQuery, PreparedQueryBorrow,
+    PreparedQueryIter, PreparedView, Query, QueryBorrow, QueryIter, QueryMut, QueryShared,
+    Satisfies, View, ViewBorrow, With, Without,
 };
 pub use query_one::QueryOne;
 pub use take::TakenEntity;

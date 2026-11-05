@@ -2,6 +2,7 @@
 use core::any::Any;
 use core::any::TypeId;
 use core::marker::PhantomData;
+use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::slice::Iter as SliceIter;
 #[cfg(feature = "std")]
@@ -183,6 +184,97 @@ impl<T> Clone for FetchRead<T> {
     }
 }
 
+pub struct Mut<T> {
+    _marker: PhantomData<*const T>,
+}
+
+pub struct MutRef<'a, T> {
+    entity: Entity,
+    value: &'a mut T,
+}
+
+impl<T> Deref for MutRef<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.value
+    }
+}
+
+impl<T> DerefMut for MutRef<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.value
+    }
+}
+
+#[doc(hidden)]
+pub struct FetchWriteEntity<T> {
+    entity: FetchEntity,
+    write: FetchWrite<T>,
+}
+
+impl<T> Clone for FetchWriteEntity<T> {
+    fn clone(&self) -> Self {
+        Self {
+            entity: self.entity.clone(),
+            write: self.write.clone(),
+        }
+    }
+}
+
+unsafe impl<T: Component> Fetch for FetchWriteEntity<T> {
+    type State = usize;
+
+    fn dangling() -> Self {
+        Self {
+            entity: FetchEntity::dangling(),
+            write: FetchWrite::dangling(),
+        }
+    }
+
+    fn access(archetype: &Archetype) -> Option<Access> {
+        FetchWrite::<T>::access(archetype)
+    }
+
+    fn borrow(archetype: &Archetype, state: Self::State) {
+        FetchWrite::<T>::borrow(archetype, state)
+    }
+    #[allow(clippy::needless_question_mark)]
+    fn prepare(archetype: &Archetype) -> Option<Self::State> {
+        FetchWrite::<T>::prepare(archetype)
+    }
+    fn execute(archetype: &Archetype, state: Self::State) -> Self {
+        Self {
+            write: FetchWrite::<T>::execute(archetype, state),
+            entity: FetchEntity::execute(archetype, ()),
+        }
+    }
+    fn release(archetype: &Archetype, state: Self::State) {
+        FetchWrite::<T>::release(archetype, state)
+    }
+
+    fn for_each_borrow(f: impl FnMut(TypeId, bool)) {
+        FetchWrite::<T>::for_each_borrow(f)
+    }
+}
+
+impl<T: Component> Query for Mut<T> {
+    type Item<'q> = MutRef<'q, T>;
+    type Fetch = FetchWriteEntity<T>;
+
+    unsafe fn get<'q>(meta: &[EntityMeta], fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
+        let id = fetch.entity.0.as_ptr().add(n).read();
+        let entity = Entity {
+            id,
+            generation: meta.get_unchecked(id as usize).generation,
+        };
+
+        let value = &mut *fetch.write.0.as_ptr().add(n);
+
+        MutRef { entity, value }
+    }
+}
+
 impl<T: MutComponent> Query for &'_ mut T {
     type Item<'q> = &'q mut T;
 
@@ -196,7 +288,7 @@ impl<T: MutComponent> Query for &'_ mut T {
 #[doc(hidden)]
 pub struct FetchWrite<T>(NonNull<T>);
 
-unsafe impl<T: MutComponent> Fetch for FetchWrite<T> {
+unsafe impl<T: Component> Fetch for FetchWrite<T> {
     type State = usize;
 
     fn dangling() -> Self {
