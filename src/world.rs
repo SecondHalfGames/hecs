@@ -5,6 +5,7 @@ use core::convert::TryFrom;
 use core::error::Error;
 use core::hash::{BuildHasherDefault, Hasher};
 use core::{fmt, ptr};
+use hashbrown::HashSet;
 use spin::Mutex;
 
 use hashbrown::hash_map::{Entry, HashMap};
@@ -52,6 +53,7 @@ pub struct World {
     #[cfg(feature = "std")]
     query_cache: QueryCache,
     id: u64,
+    changed: HashSet<(Entity, TypeId)>,
 }
 
 impl World {
@@ -75,6 +77,7 @@ impl World {
             #[cfg(feature = "std")]
             query_cache: QueryCache::default(),
             id,
+            changed: Default::default(),
         }
     }
 
