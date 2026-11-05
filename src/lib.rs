@@ -92,8 +92,8 @@ mod world;
 pub use archetype::{Archetype, ArchetypeColumn, ArchetypeColumnMut, TypeIdMap, TypeInfo};
 pub use batch::{BatchIncomplete, BatchWriter, ColumnBatch, ColumnBatchBuilder, ColumnBatchType};
 pub use bundle::{
-    bundle_satisfies_query, dynamic_bundle_satisfies_query, Bundle, DynamicBundle,
-    DynamicBundleClone, MissingComponent,
+    Bundle, DynamicBundle, DynamicBundleClone, MissingComponent, bundle_satisfies_query,
+    dynamic_bundle_satisfies_query,
 };
 pub use change_tracker::{ChangeTracker, Changes};
 pub use command_buffer::CommandBuffer;
@@ -108,8 +108,8 @@ pub use query::{
 pub use query_one::QueryOne;
 pub use take::TakenEntity;
 pub use world::{
-    ArchetypesGeneration, Component, ComponentError, Iter, QueryOneError, SpawnBatchIter,
-    SpawnColumnBatchIter, World,
+    ArchetypesGeneration, Component, ComponentError, Iter, MutComponent, QueryOneError,
+    SpawnBatchIter, SpawnColumnBatchIter, World,
 };
 
 // Unstable implementation details needed by the macros
