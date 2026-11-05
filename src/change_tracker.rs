@@ -2,6 +2,7 @@ use core::mem;
 
 use alloc::vec::Vec;
 
+use crate::world::MutComponent;
 use crate::{Component, Entity, PreparedQuery, With, Without, World};
 
 /// Helper to track changes in `T` components
@@ -16,7 +17,7 @@ use crate::{Component, Entity, PreparedQuery, With, Without, World};
 /// Always use exactly one `ChangeTracker` per [`World`] per component type of interest. Using
 /// multiple trackers of the same `T` on the same world, or using the same tracker across multiple
 /// worlds, will produce unpredictable results.
-pub struct ChangeTracker<T: Component> {
+pub struct ChangeTracker<T: MutComponent> {
     added: PreparedQuery<Without<(Entity, &'static T), &'static Previous<T>>>,
     changed: PreparedQuery<(Entity, &'static T, &'static mut Previous<T>)>,
     removed: PreparedQuery<Without<With<Entity, &'static Previous<T>>, &'static T>>,
@@ -25,7 +26,7 @@ pub struct ChangeTracker<T: Component> {
     removed_components: Vec<Entity>,
 }
 
-impl<T: Component> ChangeTracker<T> {
+impl<T: MutComponent> ChangeTracker<T> {
     /// Create a change tracker for `T` components
     pub fn new() -> Self {
         Self {
@@ -53,7 +54,7 @@ impl<T: Component> ChangeTracker<T> {
     }
 }
 
-impl<T: Component> Default for ChangeTracker<T> {
+impl<T: MutComponent> Default for ChangeTracker<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -61,11 +62,12 @@ impl<T: Component> Default for ChangeTracker<T> {
 
 struct Previous<T>(T);
 impl<T: Component> Component for Previous<T> {}
+impl<T: MutComponent> MutComponent for Previous<T> {}
 
 /// Collection of iterators over changes in `T` components
 pub struct Changes<'a, T>
 where
-    T: Component + Clone + PartialEq,
+    T: MutComponent + Clone + PartialEq,
 {
     tracker: &'a mut ChangeTracker<T>,
     world: &'a mut World,
@@ -76,7 +78,7 @@ where
 
 impl<T> Changes<'_, T>
 where
-    T: Component + Clone + PartialEq,
+    T: MutComponent + Clone + PartialEq,
 {
     /// Iterate over entities which were given a new `T` component after the preceding
     /// [`track`](ChangeTracker::track) call, including newly spawned entities
@@ -127,9 +129,9 @@ where
     }
 }
 
-impl<T: Component> Drop for Changes<'_, T>
+impl<T: MutComponent> Drop for Changes<'_, T>
 where
-    T: Component + Clone + PartialEq,
+    T: Clone + PartialEq,
 {
     fn drop(&mut self) {
         if !self.added {
@@ -178,6 +180,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq)]
     struct I(i32);
     impl Component for I {}
+    impl MutComponent for I {}
     struct B;
     impl Component for B {}
 

@@ -14,7 +14,7 @@ use crate::archetype::{Archetype, TypeIdMap, TypeInfo};
 use crate::entities::{Entities, EntityMeta, Location, ReserveEntitiesIterator};
 #[cfg(feature = "std")]
 use crate::query::QueryCache;
-use crate::query::{assert_borrow, assert_distinct, CachedQuery};
+use crate::query::{CachedQuery, assert_borrow, assert_distinct};
 use crate::{
     Bundle, ColumnBatch, ComponentRef, DynamicBundle, Entity, EntityRef, Fetch, MissingComponent,
     NoSuchEntity, Query, QueryBorrow, QueryMut, QueryOne, TakenEntity, View, ViewBorrow,
@@ -1112,6 +1112,9 @@ impl From<NoSuchEntity> for QueryOneError {
 ///
 /// Enable the `macros` feature to use `#[derive(Component)]` as a short-hand.
 pub trait Component: Send + Sync + 'static {}
+
+/// Components that can be queried mutably safely
+pub trait MutComponent: Component {}
 
 /// Iterator over all of a world's entities
 pub struct Iter<'a> {

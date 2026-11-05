@@ -8,13 +8,14 @@ use core::slice::Iter as SliceIter;
 use std::sync::{Arc, RwLock};
 
 use crate::alloc::boxed::Box;
+use crate::world::MutComponent;
 #[cfg(feature = "std")]
 use hashbrown::hash_map;
 
-use crate::archetype::Archetype;
-use crate::entities::EntityMeta;
 #[cfg(feature = "std")]
 use crate::TypeIdMap;
+use crate::archetype::Archetype;
+use crate::entities::EntityMeta;
 use crate::{Component, Entity, World};
 
 /// A collection of component types to fetch from a [`World`](crate::World)
@@ -182,7 +183,7 @@ impl<T> Clone for FetchRead<T> {
     }
 }
 
-impl<T: Component> Query for &'_ mut T {
+impl<T: MutComponent> Query for &'_ mut T {
     type Item<'q> = &'q mut T;
 
     type Fetch = FetchWrite<T>;
@@ -195,7 +196,7 @@ impl<T: Component> Query for &'_ mut T {
 #[doc(hidden)]
 pub struct FetchWrite<T>(NonNull<T>);
 
-unsafe impl<T: Component> Fetch for FetchWrite<T> {
+unsafe impl<T: MutComponent> Fetch for FetchWrite<T> {
     type State = usize;
 
     fn dangling() -> Self {

@@ -6,6 +6,7 @@ use core::ptr::NonNull;
 
 use crate::archetype::Archetype;
 use crate::entities::EntityMeta;
+use crate::world::MutComponent;
 use crate::{
     ArchetypeColumn, ArchetypeColumnMut, Component, Entity, Fetch, MissingComponent, Query,
     QueryOne,
@@ -363,7 +364,7 @@ impl<'a, T: Component> ComponentRef<'a> for &'a T {
     }
 }
 
-impl<'a, T: Component> ComponentRef<'a> for &'a mut T {
+impl<'a, T: MutComponent> ComponentRef<'a> for &'a mut T {
     type Ref = RefMut<'a, T>;
 
     type Column = ArchetypeColumnMut<'a, T>;
