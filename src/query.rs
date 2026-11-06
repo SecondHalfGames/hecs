@@ -10,6 +10,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::alloc::boxed::Box;
 use crate::world::MutComponent;
+use hashbrown::HashSet;
 #[cfg(feature = "std")]
 use hashbrown::hash_map;
 
@@ -191,6 +192,7 @@ pub struct Mut<T> {
 pub struct MutRef<'a, T> {
     pub(crate) entity: Entity,
     pub(crate) value: &'a mut T,
+    pub(crate) changed: &'a mut HashSet<(Entity, TypeId)>,
 }
 
 impl<T> Deref for MutRef<'_, T> {
@@ -201,8 +203,9 @@ impl<T> Deref for MutRef<'_, T> {
     }
 }
 
-impl<T> DerefMut for MutRef<'_, T> {
+impl<T: 'static> DerefMut for MutRef<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        self.changed.insert((self.entity, TypeId::of::<T>()));
         self.value
     }
 }
@@ -211,6 +214,7 @@ impl<T> DerefMut for MutRef<'_, T> {
 pub struct FetchWriteEntity<T> {
     entity: FetchEntity,
     write: FetchWrite<T>,
+    changed: *mut HashSet<(Entity, TypeId)>,
 }
 
 impl<T> Clone for FetchWriteEntity<T> {
@@ -218,6 +222,7 @@ impl<T> Clone for FetchWriteEntity<T> {
         Self {
             entity: self.entity.clone(),
             write: self.write.clone(),
+            changed: self.changed,
         }
     }
 }
@@ -229,6 +234,7 @@ unsafe impl<T: Component> Fetch for FetchWriteEntity<T> {
         Self {
             entity: FetchEntity::dangling(),
             write: FetchWrite::dangling(),
+            changed: core::ptr::null_mut(),
         }
     }
 
@@ -247,6 +253,7 @@ unsafe impl<T: Component> Fetch for FetchWriteEntity<T> {
         Self {
             write: FetchWrite::<T>::execute(archetype, state),
             entity: FetchEntity::execute(archetype, ()),
+            changed: (&raw const archetype.changed).cast_mut(),
         }
     }
     fn release(archetype: &Archetype, state: Self::State) {
@@ -271,7 +278,13 @@ impl<T: Component> Query for Mut<T> {
 
         let value = &mut *fetch.write.0.as_ptr().add(n);
 
-        MutRef { entity, value }
+        let changed = &mut *fetch.changed;
+
+        MutRef {
+            entity,
+            value,
+            changed,
+        }
     }
 }
 

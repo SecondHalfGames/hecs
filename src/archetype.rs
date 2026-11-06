@@ -25,7 +25,7 @@ pub struct Archetype {
     entities: Box<[u32]>,
     /// One allocation per type, in the same order as `types`
     data: Box<[Data]>,
-    changed: HashSet<Entity>,
+    pub changed: HashSet<(Entity, TypeId)>,
 }
 
 impl Archetype {

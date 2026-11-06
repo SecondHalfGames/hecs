@@ -362,10 +362,7 @@ impl<'a, T: Component> ComponentRef<'a> for MutRef<'a, T> {
     }
 
     unsafe fn from_raw(raw: *mut Self::Component) -> Self {
-        Self {
-            value: unsafe { &mut *raw },
-            entity: Entity::DANGLING,
-        }
+        panic!("you can't do that!");
     }
 
     fn get_column(archetype: &'a Archetype) -> Option<Self::Column> {

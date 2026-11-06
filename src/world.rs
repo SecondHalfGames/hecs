@@ -1018,6 +1018,25 @@ impl World {
     pub fn set_freelist(&mut self, freelist: &[Entity]) {
         self.entities.set_freelist(freelist);
     }
+
+    pub fn changes<T: Component>(&self) -> Vec<Entity> {
+        let mut changes = Vec::new();
+        let mut change_set = HashSet::new();
+
+        for archetype in &self.archetypes.archetypes {
+            if archetype.has::<T>() {
+                for &(entity, type_id) in &archetype.changed {
+                    if type_id == TypeId::of::<T>() {
+                        if change_set.insert(entity) {
+                            changes.push(entity);
+                        }
+                    }
+                }
+            }
+        }
+
+        changes
+    }
 }
 
 unsafe impl Send for World {}
