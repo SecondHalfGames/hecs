@@ -18,7 +18,7 @@ use crate::{Access, Component, ComponentRef, Entity, Query};
 /// Accessing `Archetype`s is only required in niche cases. Typical use should go through the
 /// [`World`](crate::World).
 pub struct Archetype {
-    types: Vec<TypeInfo>,
+    types: Box<[TypeInfo]>,
     type_ids: Box<[TypeId]>,
     index: OrderedTypeIdMap<usize>,
     len: u32,
@@ -54,7 +54,7 @@ impl Archetype {
         Self {
             index: OrderedTypeIdMap::new(types.iter().enumerate().map(|(i, ty)| (ty.id, i))),
             type_ids: types.iter().map(|ty| ty.id()).collect(),
-            types,
+            types: types.into(),
             entities: Box::new([]),
             len: 0,
             data: (0..component_count)
