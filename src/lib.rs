@@ -99,7 +99,7 @@ pub use change_tracker::{ChangeTracker, Changes};
 pub use command_buffer::CommandBuffer;
 pub use entities::{Entity, NoSuchEntity};
 pub use entity_builder::{BuiltEntity, BuiltEntityClone, EntityBuilder, EntityBuilderClone};
-pub use entity_ref::{ComponentRef, ComponentRefShared, EntityRef, Ref, RefMut};
+pub use entity_ref::{ComponentRef, ComponentRefShared, EntityRef, Ref, RefMut, SpecialMutRef};
 pub use query::{
     Access, Batch, BatchedIter, Mut, MutRef, Or, PreparedQuery, PreparedQueryBorrow,
     PreparedQueryIter, PreparedView, Query, QueryBorrow, QueryIter, QueryMut, QueryShared,
