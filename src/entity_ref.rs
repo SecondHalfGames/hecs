@@ -4,6 +4,8 @@ use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut, FnOnce};
 use core::ptr::NonNull;
 
+use hashbrown::HashSet;
+
 use crate::archetype::Archetype;
 use crate::entities::EntityMeta;
 use crate::world::MutComponent;
@@ -345,7 +347,25 @@ pub trait ComponentRef<'a> {
 }
 
 pub struct SpecialMutRef<'a, T> {
+    entity: Entity,
     inner: RefMut<'a, T>,
+    changed: *mut HashSet<(Entity, TypeId)>,
+}
+
+impl<T> Deref for SpecialMutRef<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.inner.deref()
+    }
+}
+
+impl<T: 'static> DerefMut for SpecialMutRef<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe {
+            (*self.changed).insert((self.entity, TypeId::of::<T>()));
+        }
+        self.inner.deref_mut()
+    }
 }
 
 impl<'a, T: Component> ComponentRef<'a> for MutRef<'a, T> {
@@ -357,7 +377,9 @@ impl<'a, T: Component> ComponentRef<'a> for MutRef<'a, T> {
 
     fn get_component(entity: EntityRef<'a>) -> Option<Self::Ref> {
         Some(SpecialMutRef {
+            entity: entity.entity(),
             inner: unsafe { RefMut::new(entity.archetype, entity.index).ok()? },
+            changed: (&raw const entity.archetype.changed).cast_mut(),
         })
     }
 
