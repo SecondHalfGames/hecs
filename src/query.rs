@@ -189,8 +189,8 @@ pub struct Mut<T> {
 }
 
 pub struct MutRef<'a, T> {
-    entity: Entity,
-    value: &'a mut T,
+    pub(crate) entity: Entity,
+    pub(crate) value: &'a mut T,
 }
 
 impl<T> Deref for MutRef<'_, T> {

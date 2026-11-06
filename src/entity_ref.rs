@@ -8,8 +8,8 @@ use crate::archetype::Archetype;
 use crate::entities::EntityMeta;
 use crate::world::MutComponent;
 use crate::{
-    ArchetypeColumn, ArchetypeColumnMut, Component, Entity, Fetch, MissingComponent, Query,
-    QueryOne,
+    ArchetypeColumn, ArchetypeColumnMut, Component, Entity, Fetch, MissingComponent, Mut, MutRef,
+    Query, QueryOne,
 };
 
 /// Handle to an entity with any component types
@@ -342,6 +342,35 @@ pub trait ComponentRef<'a> {
     /// Borrow a column from an archetype
     #[doc(hidden)]
     fn get_column(archetype: &'a Archetype) -> Option<Self::Column>;
+}
+
+pub struct SpecialMutRef<'a, T> {
+    inner: RefMut<'a, T>,
+}
+
+impl<'a, T: Component> ComponentRef<'a> for MutRef<'a, T> {
+    type Ref = SpecialMutRef<'a, T>;
+
+    type Column = ArchetypeColumn<'a, T>;
+
+    type Component = T;
+
+    fn get_component(entity: EntityRef<'a>) -> Option<Self::Ref> {
+        Some(SpecialMutRef {
+            inner: unsafe { RefMut::new(entity.archetype, entity.index).ok()? },
+        })
+    }
+
+    unsafe fn from_raw(raw: *mut Self::Component) -> Self {
+        Self {
+            value: unsafe { &mut *raw },
+            entity: Entity::DANGLING,
+        }
+    }
+
+    fn get_column(archetype: &'a Archetype) -> Option<Self::Column> {
+        ArchetypeColumn::new(archetype)
+    }
 }
 
 impl<'a, T: Component> ComponentRef<'a> for &'a T {
