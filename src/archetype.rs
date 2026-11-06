@@ -1,17 +1,17 @@
-use crate::alloc::alloc::{alloc, dealloc, Layout};
+use crate::alloc::alloc::{Layout, alloc, dealloc};
 use crate::alloc::boxed::Box;
 use crate::alloc::{vec, vec::Vec};
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 use core::fmt;
 use core::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use core::ops::{Deref, DerefMut};
 use core::ptr::{self, NonNull};
 
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::borrow::AtomicBorrow;
 use crate::query::Fetch;
-use crate::{Access, Component, ComponentRef, Query};
+use crate::{Access, Component, ComponentRef, Entity, Query};
 
 /// A collection of entities having the same component types
 ///
@@ -25,6 +25,7 @@ pub struct Archetype {
     entities: Box<[u32]>,
     /// One allocation per type, in the same order as `types`
     data: Box<[Data]>,
+    changed: HashSet<Entity>,
 }
 
 impl Archetype {
@@ -62,6 +63,7 @@ impl Archetype {
                     storage: NonNull::new(max_align as *mut u8).unwrap(),
                 })
                 .collect(),
+            changed: Default::default(),
         }
     }
 

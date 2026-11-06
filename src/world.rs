@@ -53,7 +53,6 @@ pub struct World {
     #[cfg(feature = "std")]
     query_cache: QueryCache,
     id: u64,
-    changed: HashSet<(Entity, TypeId)>,
 }
 
 impl World {
@@ -77,7 +76,6 @@ impl World {
             #[cfg(feature = "std")]
             query_cache: QueryCache::default(),
             id,
-            changed: Default::default(),
         }
     }
 
