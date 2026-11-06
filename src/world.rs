@@ -1019,6 +1019,16 @@ impl World {
         self.entities.set_freelist(freelist);
     }
 
+    pub fn clear_changes<T: Component>(&mut self) {
+        for archetype in &mut self.archetypes.archetypes {
+            if archetype.has::<T>() {
+                archetype
+                    .changed
+                    .retain(|&(_entity, type_id)| type_id != TypeId::of::<T>());
+            }
+        }
+    }
+
     pub fn changes<T: Component>(&self) -> Vec<Entity> {
         let mut changes = Vec::new();
         let mut change_set = HashSet::new();
@@ -1026,10 +1036,8 @@ impl World {
         for archetype in &self.archetypes.archetypes {
             if archetype.has::<T>() {
                 for &(entity, type_id) in &archetype.changed {
-                    if type_id == TypeId::of::<T>() {
-                        if change_set.insert(entity) {
-                            changes.push(entity);
-                        }
+                    if type_id == TypeId::of::<T>() && change_set.insert(entity) {
+                        changes.push(entity);
                     }
                 }
             }
